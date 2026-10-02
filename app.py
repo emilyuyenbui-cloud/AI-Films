@@ -87,10 +87,13 @@ def planning_payload(p):
 def video_payload(p):
     return {"作品名": p["title"], "分镜序列": p["video_prompts"]}
 
-def replace_workflow_nodes(p):
-    if not TEMPLATE_PATH.exists():
-        raise FileNotFoundError("workflow_template.json not found")
-    wf = json.loads(TEMPLATE_PATH.read_text(encoding="utf-8"))
+def replace_workflow_nodes(p, template_text=None):
+    if template_text:
+        wf = json.loads(template_text)
+    elif TEMPLATE_PATH.exists():
+        wf = json.loads(TEMPLATE_PATH.read_text(encoding="utf-8"))
+    else:
+        raise FileNotFoundError("Hãy upload workflow JSON gốc ở phần Export trước khi build.")
     planning = json.dumps(planning_payload(p), ensure_ascii=False, indent=2)
     video = json.dumps(video_payload(p), ensure_ascii=False, indent=2)
     found = {"分镜策划": False, "视频提示词": False}
@@ -259,9 +262,20 @@ with tabs[4]:
     with col3:
         st.download_button("Download 视频提示词 JSON", json.dumps(video, ensure_ascii=False, indent=2), file_name=f"{slugify(p['title'])}_video_prompts.json", mime="application/json")
     st.divider()
+    st.write("**Workflow template**")
+    workflow_upload = st.file_uploader(
+        "Upload workflow JSON gốc (file có node 分镜策划 và 视频提示词)",
+        type=["json"],
+        help="Tool sẽ giữ nguyên toàn bộ workflow và chỉ thay nội dung hai node 分镜策划 / 视频提示词."
+    )
     if st.button("Build ComfyUI workflow JSON", type="primary"):
         try:
-            wf, found = replace_workflow_nodes(p)
+            template_text = None
+            if workflow_upload is not None:
+                template_text = workflow_upload.getvalue().decode("utf-8")
+            wf, found = replace_workflow_nodes(p, template_text=template_text)
+            if not found.get("分镜策划") or not found.get("视频提示词"):
+                st.warning(f"Đã build nhưng không tìm đủ node cần thay: {found}")
             st.session_state["workflow_export"] = json.dumps(wf, ensure_ascii=False, indent=2)
             st.success(f"Replaced nodes: {found}")
         except Exception as e:
